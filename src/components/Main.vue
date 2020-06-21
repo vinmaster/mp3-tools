@@ -1,168 +1,97 @@
 <template>
   <div class="container">
-    <input type="file" accept="audio/*" @change="fileChange" multiple />
-    <audio style="width: 100%;" controls ref="audioElement" />
+    <h1>MP3 Tools</h1>
+    <input type="file" accept="audio/*" @change="fileChanged" multiple />
     <button role="switch" aria-checked="false" @click="playPauseClicked">
       <span>Play/Pause</span>
     </button>
-    <canvas ref="canvasElement"></canvas>
-    <canvas ref="canvasElement2"></canvas>
+    <audio style="width: 100%;" controls ref="audioElement" />
+    <h2>Waveform</h2>
+    <div id="main-wavesurfer"></div>
+    <Waveform :audioBuffer="audioBuffer"></Waveform>
+    <Oscilloscope
+      ref="oscilloscope"
+      :audioElement="$refs.audioElement"
+      :analyserNode="analyserNode"
+    ></Oscilloscope>
+    <FrequencyBar
+      ref="frequencyBar"
+      :audioElement="$refs.audioElement"
+      :analyserNode="analyserNode"
+    ></FrequencyBar>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator';
+import Oscilloscope from './Oscilloscope.vue';
+import FrequencyBar from './FrequencyBar.vue';
+import Waveform from './Waveform.vue';
 
-@Component
+@Component({
+  components: { Oscilloscope, FrequencyBar, Waveform },
+})
 export default class Main extends Vue {
   files: FileList | undefined;
   currentFileIndex = 0;
 
   audioContext = new AudioContext();
+  analyserNode: AnalyserNode = null as any;
   sourceNode!: MediaElementAudioSourceNode;
-  analyserNode!: AnalyserNode;
+  audioBuffer: AudioBuffer = null as any;
 
-  canvasContext!: CanvasRenderingContext2D;
-  canvasContext2!: CanvasRenderingContext2D;
-  dataArray!: Uint8Array;
-  dataArray2!: Uint8Array;
+  wavesurfer: any;
 
   $refs!: {
     audioElement: HTMLMediaElement;
-    canvasElement: HTMLCanvasElement;
-    canvasElement2: HTMLCanvasElement;
+    oscilloscope: Oscilloscope;
+    frequencyBar: FrequencyBar;
   };
 
-  created() {
-    console.log('created');
-  }
-
   mounted() {
-    console.log('mounted');
     this.$refs.audioElement.onplay = () => {
-      this.drawCanvas();
+      this.$refs.oscilloscope.drawCanvas();
+      this.$refs.frequencyBar.drawCanvas();
     };
 
-    const canvasContext = this.$refs.canvasElement.getContext('2d');
-    const canvasContext2 = this.$refs.canvasElement2.getContext('2d');
-    if (canvasContext && canvasContext2) {
-      this.canvasContext = canvasContext;
-      this.canvasContext2 = canvasContext2;
-      this.canvasContext2.clearRect(
-        0,
-        0,
-        this.$refs.canvasElement2.width,
-        this.$refs.canvasElement2.height
-      );
-    }
+    this.$refs.audioElement.onloadeddata = () => {
+      this.$refs.oscilloscope.setupVisual();
+      this.$refs.frequencyBar.setupVisual();
+    };
 
+    const WaveSurfer = window['WaveSurfer' as any] as any;
+    this.wavesurfer = WaveSurfer.create({
+      container: '#main-wavesurfer',
+      backgroundColor: '#222',
+      waveColor: '#01ff00',
+      progressColor: '#007500',
+      backend: 'MediaElement',
+      mediaControls: true,
+      removeMediaElementOnDestroy: false,
+    });
+
+    this.loadStatic();
+  }
+
+  beforeDestroy() {
+    this.cleanUp();
+  }
+
+  loadStatic() {
     fetch('test.mp3')
       .then(response => response.arrayBuffer())
       .then(arrayBuffer => {
         const blob = new Blob([arrayBuffer], { type: 'audio/mp3' });
         this.loadToAudioElement(blob);
 
-        this.setupVisual(arrayBuffer);
+        return this.audioContext.decodeAudioData(arrayBuffer);
+      })
+      .then(audioBuffer => {
+        this.audioBuffer = audioBuffer;
       });
   }
 
-  beforeDestroy() {
-    console.log('beforeDestroy');
-    this.cleanUp();
-  }
-
-  setupVisual(arrayBuffer: ArrayBuffer) {
-    this.audioContext.decodeAudioData(arrayBuffer).then(audioBuffer => {
-      console.log('audio buffer', audioBuffer);
-
-      this.analyserNode = this.audioContext.createAnalyser();
-      this.sourceNode.connect(this.analyserNode);
-
-      const bufferLength = this.analyserNode.frequencyBinCount;
-      this.dataArray = new Uint8Array(bufferLength);
-      this.dataArray2 = new Uint8Array(bufferLength);
-
-      console.log(this.audioContext);
-      console.log(this.sourceNode);
-      console.log(this.analyserNode);
-      this.drawCanvas();
-    });
-  }
-
-  drawCanvas() {
-    if (!this.$refs.audioElement.paused) {
-      requestAnimationFrame(this.drawCanvas.bind(this));
-    }
-
-    // Waveform/oscilloscope
-    this.analyserNode.getByteTimeDomainData(this.dataArray);
-
-    const width = this.$refs.canvasElement.width;
-    const height = this.$refs.canvasElement.height;
-    this.canvasContext.fillStyle = '#222';
-    this.canvasContext.fillRect(0, 0, width, height);
-
-    this.canvasContext.lineWidth = 2;
-    this.canvasContext.strokeStyle = '#01ff00';
-
-    this.canvasContext.beginPath();
-
-    const sliceWidth = (width * 1.0) / this.dataArray.length;
-    let x = 0;
-
-    for (let i = 0; i < this.dataArray.length; i++) {
-      const v = this.dataArray[i] / 128.0;
-      const y = (v * height) / 2;
-
-      if (i === 0) {
-        this.canvasContext.moveTo(x, y);
-      } else {
-        this.canvasContext.lineTo(x, y);
-      }
-
-      x += sliceWidth;
-    }
-
-    this.canvasContext.lineTo(this.$refs.canvasElement.width, this.$refs.canvasElement.height / 2);
-    this.canvasContext.stroke();
-
-    // Frequency bar
-    this.analyserNode.getByteFrequencyData(this.dataArray2);
-
-    const width2 = this.$refs.canvasElement2.width;
-    const height2 = this.$refs.canvasElement2.height;
-    this.canvasContext2.fillStyle = '#222';
-    this.canvasContext2.fillRect(0, 0, width2, height2);
-
-    const barWidth = (width2 / this.dataArray2.length) * 2.5;
-    let barHeight = 0;
-    let x2 = 0;
-
-    for (let i = 0; i < this.dataArray2.length; i++) {
-      barHeight = this.dataArray2[i];
-      this.canvasContext2.fillStyle = `rgb(1,${barHeight + 100},50)`;
-      this.canvasContext2.fillRect(x2, height2 - barHeight / 2, barWidth, barHeight);
-
-      x2 += barWidth + 1;
-    }
-  }
-
-  playPauseClicked() {
-    // Autoplay policy
-    if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
-    }
-
-    if (!this.hasAudioSource) return;
-
-    if (this.$refs.audioElement.paused) {
-      this.$refs.audioElement.play();
-    } else {
-      this.$refs.audioElement.pause();
-    }
-  }
-
-  fileChange(event: { target: HTMLInputElement }) {
+  fileChanged(event: { target: HTMLInputElement }) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
@@ -172,10 +101,14 @@ export default class Main extends Vue {
     this.files = files;
 
     const file = files[this.currentFileIndex] as any;
-    file.arrayBuffer().then((arrayBuffer: ArrayBuffer) => {
-      this.setupVisual(arrayBuffer);
-      console.log('array buffer 1', arrayBuffer);
-    });
+    file
+      .arrayBuffer()
+      .then((arrayBuffer: ArrayBuffer) => {
+        return this.audioContext.decodeAudioData(arrayBuffer);
+      })
+      .then((audioBuffer: AudioBuffer) => {
+        this.audioBuffer = audioBuffer;
+      });
 
     // Slower performance
     // const resp = new Response(files[this.currentFileIndex]);
@@ -199,9 +132,15 @@ export default class Main extends Vue {
     const objectUrl = URL.createObjectURL(blob);
     this.$refs.audioElement.setAttribute('src', objectUrl);
 
+    this.wavesurfer.empty();
+    this.wavesurfer.loadMediaElement(this.$refs.audioElement);
+
     if (!this.sourceNode) {
       this.sourceNode = this.audioContext.createMediaElementSource(this.$refs.audioElement);
       this.sourceNode.connect(this.audioContext.destination);
+
+      this.analyserNode = this.audioContext.createAnalyser();
+      this.sourceNode.connect(this.analyserNode);
     }
   }
 
@@ -220,6 +159,21 @@ export default class Main extends Vue {
     });
   }
 
+  playPauseClicked() {
+    // Autoplay policy
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+
+    if (!this.hasAudioSource) return;
+
+    if (this.$refs.audioElement.paused) {
+      this.$refs.audioElement.play();
+    } else {
+      this.$refs.audioElement.pause();
+    }
+  }
+
   cleanUp() {
     if (this.files && this.files.length > 0) {
       // Remove object in memory
@@ -236,7 +190,6 @@ export default class Main extends Vue {
 }
 </script>
 
-<!-- Add "scoped" attribute to limit CSS to this component only -->
 <style scoped>
 .container {
   display: flex;
