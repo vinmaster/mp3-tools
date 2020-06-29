@@ -1,6 +1,12 @@
 <template>
   <div class="container">
     <h2>Modified Waveform (Removing quiet parts)</h2>
+
+    <div class="form-field">
+      <span>Threshold</span>
+      <input v-model="threshold" placeholder="Threshold" />
+    </div>
+
     <audio style="width: 100%;" controls ref="audioElement" />
     <canvas ref="canvasElement"></canvas>
     <div id="waveform-wavesurfer"></div>
@@ -26,6 +32,7 @@ export default class Waveform extends Vue {
 
   audioContext = new AudioContext({ sampleRate: Config.sampleRate });
   sourceNode!: MediaElementAudioSourceNode;
+  threshold = 0.5;
 
   canvasContext!: CanvasRenderingContext2D;
   wavesurfer: any;
@@ -39,6 +46,14 @@ export default class Waveform extends Vue {
   @Watch('audioBuffer')
   onAudioBufferChanged(value: AudioBuffer, oldValue: AudioBuffer) {
     if (value) {
+      const newBuffer = this.createNewAudioBuffer();
+      this.setupView(newBuffer);
+    }
+  }
+
+  @Watch('threshold')
+  onThresholdChanged(value: number, oldValue: number) {
+    if (!Number.isNaN(Number.parseFloat(value.toString()))) {
       const newBuffer = this.createNewAudioBuffer();
       this.setupView(newBuffer);
     }
@@ -157,7 +172,7 @@ export default class Waveform extends Vue {
         total = slice.reduce((acc, val) => acc + val);
         filled.push(Math.abs(total));
         for (let j = i; j < i + sampleSize; j++) {
-          if (Math.abs(total) < 0.5) {
+          if (Math.abs(total) < this.threshold) {
             removedData[removedDataLength++] = leftChannel[j];
             newLeftChannel[j] = 0;
           } else {
@@ -394,5 +409,40 @@ export default class Waveform extends Vue {
 .button:hover {
   color: white;
   background: black;
+}
+.form-field {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  line-height: 25px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 6px;
+  -webkit-appearance: none;
+  /* color: #99a3ba;
+  border: 1px solid #cdd9ed; */
+  background: #fff;
+  transition: border 0.3s ease;
+}
+.form-field > input {
+  padding: 8px 12px;
+}
+.form-field::placeholder {
+  color: #cbd1dc;
+}
+.form-field:focus {
+  outline: none;
+  border-color: #275efe;
+}
+.form-field > span {
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 25px;
+  color: #99a3ba;
+  background: #eef4ff;
+  border: 1px solid #cdd9ed;
+  transition: background 0.3s ease, border 0.3s ease, color 0.3s ease;
 }
 </style>
