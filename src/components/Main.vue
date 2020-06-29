@@ -1,6 +1,7 @@
 <template>
   <div class="container">
     <h1>MP3 Tools</h1>
+    <span>Sample Rate: {{ sampleRate }}</span>
     <input type="file" accept="audio/*" @change="fileChanged" multiple />
     <button role="switch" aria-checked="false" @click="playPauseClicked">
       <span>Play/Pause</span>
@@ -27,15 +28,17 @@ import { Component, Vue } from 'vue-property-decorator';
 import Oscilloscope from './Oscilloscope.vue';
 import FrequencyBar from './FrequencyBar.vue';
 import Waveform from './Waveform.vue';
+import { Config } from '../config';
 
 @Component({
   components: { Oscilloscope, FrequencyBar, Waveform },
 })
 export default class Main extends Vue {
+  sampleRate = Config.sampleRate;
   files: FileList | undefined;
   currentFileIndex = 0;
 
-  audioContext = new AudioContext();
+  audioContext = new AudioContext({ sampleRate: Config.sampleRate });
   analyserNode: AnalyserNode = null as any;
   sourceNode!: MediaElementAudioSourceNode;
   audioBuffer: AudioBuffer = null as any;
